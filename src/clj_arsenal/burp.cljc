@@ -16,3 +16,8 @@
 (defn element-key?
   [x]
   (impl/element-key? x))
+
+
+(defn element-key
+  [operator custom-key]
+  (->BurpElementKey operator custom-key))
