@@ -20,8 +20,6 @@
           (every? #(or (keyword? %) (symbol? %)) operator)))
     (if (map? (first others))
       (let [props (first others)]
-        (when-not (every? keyword? (keys props))
-          (throw (argument-error "burp prop keys must be keyword literals")))
         [operator props (rest others)])
       [operator {} others])
     (throw (argument-error "burp operator must be a keyword, a symbol, or a vector of the same"))))
@@ -107,9 +105,3 @@
 
           :else
           x)))))
-
-(defn ^:macro-support convert-forms
-  [forms]
-  (if (empty? (rest forms))
-    (convert-form (first forms))
-    (cons 'clojure.core/list (map convert-form forms))))

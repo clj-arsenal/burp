@@ -6,7 +6,7 @@
    [clj-arsenal.check :refer [check expect]]
    [clj-arsenal.basis.once]))
 
-#?(:clj (defmacro burp [& forms] (macro-impl/convert-forms forms)))
+#?(:clj (defmacro burp [& forms] (cons `list (map macro-impl/convert-form forms))))
 #?(:clj (defmacro $ [& forms] (macro-impl/convert-form (into (with-meta [] (meta &form)) forms))))
 
 (defn element?
