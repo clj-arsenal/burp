@@ -3,7 +3,7 @@
   (:require
    #?(:clj [clj-arsenal.burp.macro-impl :as macro-impl])
    [clj-arsenal.burp.impl :refer [->BurpElement ->BurpElementKey] :as impl]
-   [clj-arsenal.check :refer [check expect]]
+   [clj-arsenal.check :refer [check expect] :as check]
    [clj-arsenal.basis.once]))
 
 #?(:clj
@@ -33,3 +33,18 @@ the `:key` metadata on the hiccup form, or `nil`.
 Create an element key record.
 " [operator custom-key]
   (->BurpElementKey operator custom-key))
+
+(check ::burp
+ (let [the-key (gensym)]
+   (expect =
+     (clj-arsenal.burp/burp
+       ^{:key the-key}
+       [:foo#fooz.bar.baz {:blah 1 :bleh 2} :fee :fi :fo :fum])
+     (list
+       (->BurpElement
+         (->BurpElementKey :foo the-key)
+         {:clj-arsenal.burp/id "fooz"
+          :clj-arsenal.burp/classes #{"bar" "baz"}
+          :blah 1
+          :bleh 2}
+         (list :fee :fi :fo :fum))))))

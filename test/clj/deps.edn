@@ -1,0 +1,14 @@
+{:paths
+ ["src"]
+
+ :deps
+ {me.raystubbs.clj-arsenal/burp
+  {:local/root "../.."}
+
+  me.raystubbs.clj-arsenal/burp-test
+  {:local/root ".."}}
+
+ :aliases
+ {:test
+  {:clj-arsenal.check/enabled true
+   :clj-arsenal.check/ns-include-re "clj-arsenal[.]burp([.].+)?"}}}

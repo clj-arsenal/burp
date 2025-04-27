@@ -1,0 +1,9 @@
+{:paths
+ ["src"]
+
+ :deps
+ {me.raystubbs.clj-arsenal/vdom
+  {:local/root ".."}
+
+  me.raystubbs.clj-arsenal/check
+  {:mvn/version "0.0.6"}}}
