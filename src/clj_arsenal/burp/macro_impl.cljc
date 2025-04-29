@@ -1,10 +1,8 @@
 (ns ^:no-doc clj-arsenal.burp.macro-impl
   (:require
    [clojure.string :as str]
-   [clj-arsenal.burp.impl :refer [->BurpElementKey ->BurpElement] :as impl]
-   [clj-arsenal.check :refer [check when-check expect]]
-   [clj-arsenal.basis.once :refer [once constant?]]
-   [clojure.walk :as walk]))
+   [clj-arsenal.basis.once :refer [onceify]]
+   [clj-arsenal.burp :as-alias burp]))
 
 (defn- ^:macro-support argument-error
   [msg]
@@ -13,16 +11,29 @@
      :cljd (ArgumentError msg)
      :clj (IllegalArgumentException. msg)))
 
-(defn- ^:macro-support normalize-element-node
-  [[operator & others :as form]]
-  (if (or (symbol? operator) (keyword? operator)
-        (and (vector operator)
-          (every? #(or (keyword? %) (symbol? %)) operator)))
-    (if (map? (first others))
-      (let [props (first others)]
-        [operator props (rest others)])
-      [operator {} others])
+(defn- ^:macro-support validate-operator
+  [operator]
+  (when-not
+    (or (symbol? operator) (keyword? operator)
+      (and (vector operator)
+        (every? #(or (keyword? %) (symbol? %)) operator)))
     (throw (argument-error "burp operator must be a keyword, a symbol, or a vector of the same"))))
+
+(defn- ^:macro-support separate-parts
+  [[form1 & other-forms :as all-forms]]
+  (cond
+    (= :> form1)
+    (let
+      [[form2 & other-forms] other-forms]
+      (if (map? (first other-forms))
+        [form2 (first other-forms) (rest other-forms)]
+        [form2 {} other-forms]))
+    
+    (map? form1)
+    [nil form1 other-forms]
+    
+    :else
+    [nil {} all-forms]))
 
 (defn- ^:macro-support parse-tag-props
   [tag]
@@ -38,70 +49,39 @@
           (set $)))}]
     (throw (argument-error "invalid keyword for burp operator"))))
 
-(defn- ^:macro-support burpify
-  [form]
-  (if-not (vector? form)
-    form
-    (let [[operator props body] (normalize-element-node form)]
-      (cond
-        (keyword? operator)
-        (let [[tag tag-props] (parse-tag-props operator)]
-          (->BurpElement
-            (->BurpElementKey tag (:key (meta form)))
-            (merge props tag-props)
-            (map burpify body)))
+(defn ^:macro-support expand-burp-element
+  [operator forms]
+  (validate-operator operator)
+  (let
+    [[k props body] (separate-parts forms)]
+    (cond
+      (keyword? operator)
+      (let
+        [[tag tag-props] (parse-tag-props operator)]
+          `(burp/->BurpElement
+             (burp/->BurpElementKey ~tag ~k)
+             ~(merge props tag-props)
+             (burp/flatten-body ~(vec body))))
 
-        (vector? operator)
-        (let [parsed-tag-components (mapv #(if (keyword? %) (parse-tag-props %) [% {}]) operator)]
-          (reduce
-            (fn [inner-burp-element [component-tag component-props]]
-              (->BurpElement
-                (->BurpElementKey component-tag nil)
-                component-props
-                [inner-burp-element]))
-            (let [[innermost-tag innermost-props] (peek parsed-tag-components)]
-              (->BurpElement
-                (->BurpElementKey innermost-tag (:key (meta form)))
-                (merge props innermost-props)
-                (map burpify body)))
-            (reverse (subvec parsed-tag-components 0 (dec (count parsed-tag-components))))))))))
+      (vector? operator)
+      (let
+        [parsed-tag-components
+         (mapv #(if (keyword? %) (parse-tag-props %) [% {}]) operator)]
+        `(onceify
+           ~(reduce
+              (fn [inner-burp-element [component-tag component-props]]
+                `(burp/->BurpElement
+                   (burp/->BurpElementKey ~component-tag ~k)
+                   ~component-props
+                   [~inner-burp-element]))
+              (let [[innermost-tag innermost-props] (peek parsed-tag-components)]
+                `(burp/->BurpElement
+                   (burp/->BurpElementKey ~innermost-tag ~k)
+                   ~(merge props innermost-props)
+                   (burp/flatten-body ~(vec body))))
+              (reverse
+                (subvec
+                  parsed-tag-components
+                  0
+                  (dec (count parsed-tag-components))))))))))
 
-(check ::burpify
-  (expect =
-    (burpify ^{:key :my-key} [:foo#fooz.bar.baz {:blah 1 :bleh 2} 1 2 3])
-    (->BurpElement
-      (->BurpElementKey :foo :my-key)
-      {:clj-arsenal.burp/id "fooz"
-       :clj-arsenal.burp/classes #{"bar" "baz"}
-       :blah 1
-       :bleh 2}
-      (list 1 2 3))))
-
-(defn- ^:macro-support onceify*
-  [form]
-  (if-not (or (map? form) (set? form) (vector? form))
-    form
-    (if (and (constant? form) (not (map-entry? form)))
-      `(once ~form)
-      (walk/walk onceify* identity form))))
-
-(defn- ^:macro-support onceify
-  [form]
-  (if-not (impl/element? form)
-    form
-    (onceify* form)))
-
-(defn ^:macro-support convert-form
-  [form]
-  (->> form burpify onceify
-    (walk/postwalk
-      (fn [x]
-        (cond
-          (impl/element? x)
-          `(->BurpElement ~(:key x) ~(:props x) (impl/-flatten-body (list ~@(:body x))))
-
-          (impl/element-key? x)
-          `(->BurpElementKey ~(:operator x) ~(:custom-key x))
-
-          :else
-          x)))))

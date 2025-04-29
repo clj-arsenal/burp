@@ -1,24 +1,18 @@
-(ns clj-arsenal.burp
+(ns ^:no-doc clj-arsenal.burp
   #?(:cljs (:require-macros clj-arsenal.burp))
   (:require
    #?(:clj [clj-arsenal.burp.macro-impl :as macro-impl])
-   [clj-arsenal.burp.impl :refer [->BurpElement ->BurpElementKey] :as impl]
    [clj-arsenal.check :refer [check expect] :as check]
    [clj-arsenal.basis.once]))
 
-#?(:clj
-   (defmacro burp "
-Expands to a list of burp elements, converted from the hiccup `forms`.
-Constants found within the forms will be extracted and reused.
-" [& forms]
-     `(impl/-flatten-body (list ~@(map macro-impl/convert-form forms)))))
-#?(:clj (defmacro $ [& forms] (macro-impl/convert-form (into (with-meta [] (meta &form)) forms))))
+(defrecord BurpElementKey [operator custom-key])
+(defrecord BurpElement [key props body])
 
 (defn element? "
 Return true if `x` is burp element.  Burp elements are records with
 #{:key :props :body}.
 " [x]
-  (impl/element? x))
+  (instance? BurpElement x))
 
 (defn element-key? "
 Returns true if `x` is a burp key.  Burp keys are records with
@@ -26,25 +20,78 @@ Returns true if `x` is a burp key.  Burp keys are records with
 the head of a hiccup form, and `:custom-key` is taken from
 the `:key` metadata on the hiccup form, or `nil`.
 " [x]
-  (impl/element-key? x))
+  (instance? BurpElementKey x))
 
+
+#?(:clj
+   (defmacro $
+     [operator & forms]
+     (macro-impl/expand-burp-element operator forms)))
 
 (defn element-key "
 Create an element key record.
 " [operator custom-key]
   (->BurpElementKey operator custom-key))
 
-(check ::burp
- (let [the-key (gensym)]
-   (expect =
-     (clj-arsenal.burp/burp
-       ^{:key the-key}
-       [:foo#fooz.bar.baz {:blah 1 :bleh 2} :fee :fi :fo :fum])
-     (list
-       (->BurpElement
-         (->BurpElementKey :foo the-key)
-         {:clj-arsenal.burp/id "fooz"
-          :clj-arsenal.burp/classes #{"bar" "baz"}
-          :blah 1
-          :bleh 2}
-         (list :fee :fi :fo :fum))))))
+(defn ^:no-doc flatten-body
+  [body]
+  (prn :body)
+  (prn :result
+  (mapcat
+    (fn [x]
+      (cond
+        (seq? x) (flatten-body x)
+        (nil? x) nil
+        :else [x]))
+    body))
+  (mapcat
+    (fn [x]
+      (cond
+        (seq? x) (flatten-body x)
+        (nil? x) nil
+        :else [x]))
+    body))
+
+(check ::elements
+  (let
+    [the-key (gensym)]
+    (expect =
+      (macroexpand
+      '(clj-arsenal.burp/$ :foo#fooz.bar.baz :> the-key
+        {:blah 1 :bleh 2}
+        :fee :fi :fo :fum))
+      (->BurpElement
+        (->BurpElementKey :foo the-key)
+        {:clj-arsenal.burp/id "fooz"
+         :clj-arsenal.burp/classes #{"bar" "baz"}
+         :blah 1
+         :bleh 2}
+        [:fee :fi :fo :fum]))
+    
+    (expect =
+      (clj-arsenal.burp/$ :foo#fooz.bar.baz
+        {:blah 1 :bleh 2}
+        :fee :fi :fo :fum)
+      (->BurpElement
+        (->BurpElementKey :foo nil)
+        {:clj-arsenal.burp/id "fooz"
+         :clj-arsenal.burp/classes #{"bar" "baz"}
+         :blah 1
+         :bleh 2}
+        [:fee :fi :fo :fum]))
+    
+    (expect =
+      (clj-arsenal.burp/$ :foo#fooz.bar.baz
+        :fee :fi :fo :fum)
+      (->BurpElement
+        (->BurpElementKey :foo nil)
+        {:clj-arsenal.burp/id "fooz"
+         :clj-arsenal.burp/classes #{"bar" "baz"}}
+        [:fee :fi :fo :fum]))))
+
+(check ::oncify-ok
+  (let
+    [count (atom 0)
+     f #(clj-arsenal.burp/$ :foo#fooz.bar.baz (do (swap! count inc) nil))]
+    (f) (f)
+    (expect = @count 2)))
