@@ -35,15 +35,13 @@ Create an element key record.
 
 (defn ^:no-doc flatten-body
   [body]
-  (prn :body)
-  (prn :result
   (mapcat
     (fn [x]
       (cond
         (seq? x) (flatten-body x)
         (nil? x) nil
         :else [x]))
-    body))
+    body)
   (mapcat
     (fn [x]
       (cond
@@ -89,7 +87,7 @@ Create an element key record.
          :clj-arsenal.burp/classes #{"bar" "baz"}}
         [:fee :fi :fo :fum]))))
 
-(check ::oncify-ok
+(check ::onceify-ok
   (let
     [count (atom 0)
      f #(clj-arsenal.burp/$ :foo#fooz.bar.baz (do (swap! count inc) nil))]
