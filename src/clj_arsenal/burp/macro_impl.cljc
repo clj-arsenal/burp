@@ -1,6 +1,7 @@
 (ns ^:no-doc clj-arsenal.burp.macro-impl
   (:require
    [clojure.string :as str]
+   [clojure.walk :as walk]
    [clj-arsenal.basis.once :refer [onceify]]
    [clj-arsenal.burp :as-alias burp]))
 
@@ -39,49 +40,70 @@
   [tag]
   (if-some [[_ tag-name id classes] (re-matches #"^([^#.]+)([#][^.]+)?([.].+)?$" (name tag))]
     [(keyword (namespace tag) tag-name)
-     {:clj-arsenal.burp/id
-      (some-> id (subs 1))
-      :clj-arsenal.burp/classes
-      (some-> classes
-        (as-> $
+     (cond-> {}
+       (some? id)
+       (assoc :clj-arsenal.burp/id (subs id 1))
+       
+       (some? classes)
+       (assoc :clj-arsenal.burp/classes
+        (as-> classes $
           (str/split $ #"[.]")
           (remove str/blank? $)
-          (set $)))}]
+          (set $))))]
     (throw (argument-error "invalid keyword for burp operator"))))
 
-(defn ^:macro-support expand-burp-element
-  [operator forms]
-  (validate-operator operator)
+(defn- ^:macro-support expand-burp-element-inner
+  [burp-element-form]
   (let
-    [[k props body] (separate-parts forms)]
+    [[_ operator & contents] burp-element-form
+     _ (validate-operator operator)
+     [k props body] (separate-parts contents)]
     (cond
       (keyword? operator)
       (let
         [[tag tag-props] (parse-tag-props operator)]
-          `(burp/->BurpElement
+        `(with-meta
+           (burp/->BurpElement
              (burp/->BurpElementKey ~tag ~k)
              ~(merge props tag-props)
-             (burp/flatten-body ~(vec body))))
+             (burp/flatten-body ~(vec body)))
+           ~(meta burp-element-form)))
 
       (vector? operator)
       (let
         [parsed-tag-components
          (mapv #(if (keyword? %) (parse-tag-props %) [% {}]) operator)]
-        `(onceify
-           ~(reduce
-              (fn [inner-burp-element [component-tag component-props]]
-                `(burp/->BurpElement
-                   (burp/->BurpElementKey ~component-tag ~k)
-                   ~component-props
-                   [~inner-burp-element]))
-              (let [[innermost-tag innermost-props] (peek parsed-tag-components)]
-                `(burp/->BurpElement
-                   (burp/->BurpElementKey ~innermost-tag ~k)
-                   ~(merge props innermost-props)
-                   (burp/flatten-body ~(vec body))))
-              (reverse
-                (subvec
-                  parsed-tag-components
-                  0
-                  (dec (count parsed-tag-components))))))))))
+        (reduce
+          (fn [inner-burp-element [component-tag component-props]]
+            `(with-meta
+               (burp/->BurpElement
+                 (burp/->BurpElementKey ~component-tag ~k)
+                 ~component-props
+                 [~inner-burp-element])
+               ~(meta burp-element-form)))
+          (let
+            [[innermost-tag innermost-props]
+             (peek parsed-tag-components)]
+            `(with-meta
+               (burp/->BurpElement
+                 (burp/->BurpElementKey ~innermost-tag ~k)
+                 ~(merge props innermost-props)
+                 (burp/flatten-body ~(vec body)))
+               ~(meta burp-element-form)))
+          (reverse
+            (subvec
+              parsed-tag-components
+              0
+              (dec (count parsed-tag-components)))))))))
+
+(defn ^:macro-support expand-burp-element
+  [burp-element-form]
+  (let [macro-sym (first burp-element-form)]
+    `(onceify
+       ~(walk/postwalk
+          (fn [x]
+            (if (and (seq? x) (= (first x) macro-sym))
+              (expand-burp-element-inner x)
+              x))
+          burp-element-form))))
 

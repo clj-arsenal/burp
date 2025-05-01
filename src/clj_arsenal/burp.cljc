@@ -25,8 +25,8 @@ the `:key` metadata on the hiccup form, or `nil`.
 
 #?(:clj
    (defmacro $
-     [operator & forms]
-     (macro-impl/expand-burp-element operator forms)))
+     [& _]
+     (macro-impl/expand-burp-element &form)))
 
 (defn element-key "
 Create an element key record.
@@ -35,57 +35,94 @@ Create an element key record.
 
 (defn ^:no-doc flatten-body
   [body]
-  (mapcat
-    (fn [x]
-      (cond
-        (seq? x) (flatten-body x)
-        (nil? x) nil
-        :else [x]))
-    body)
-  (mapcat
-    (fn [x]
-      (cond
-        (seq? x) (flatten-body x)
-        (nil? x) nil
-        :else [x]))
-    body))
+  (vec
+    (mapcat
+      (fn [x]
+        (cond
+          (seq? x) (flatten-body x)
+          (nil? x) nil
+          :else [x]))
+      body)))
 
 (check ::elements
-  (let
-    [the-key (gensym)]
-    (expect =
-      (macroexpand
-      '(clj-arsenal.burp/$ :foo#fooz.bar.baz :> the-key
-        {:blah 1 :bleh 2}
-        :fee :fi :fo :fum))
-      (->BurpElement
-        (->BurpElementKey :foo the-key)
-        {:clj-arsenal.burp/id "fooz"
-         :clj-arsenal.burp/classes #{"bar" "baz"}
-         :blah 1
-         :bleh 2}
-        [:fee :fi :fo :fum]))
-    
-    (expect =
-      (clj-arsenal.burp/$ :foo#fooz.bar.baz
-        {:blah 1 :bleh 2}
-        :fee :fi :fo :fum)
-      (->BurpElement
-        (->BurpElementKey :foo nil)
-        {:clj-arsenal.burp/id "fooz"
-         :clj-arsenal.burp/classes #{"bar" "baz"}
-         :blah 1
-         :bleh 2}
-        [:fee :fi :fo :fum]))
-    
-    (expect =
-      (clj-arsenal.burp/$ :foo#fooz.bar.baz
-        :fee :fi :fo :fum)
-      (->BurpElement
-        (->BurpElementKey :foo nil)
-        {:clj-arsenal.burp/id "fooz"
-         :clj-arsenal.burp/classes #{"bar" "baz"}}
-        [:fee :fi :fo :fum]))))
+  (expect =
+    (clj-arsenal.burp/$ :foo#fooz.bar.baz :> :the-key
+      {:blah 1 :bleh 2}
+      :fee :fi :fo :fum)
+    (->BurpElement
+      (->BurpElementKey :foo :the-key)
+      {:clj-arsenal.burp/id "fooz"
+       :clj-arsenal.burp/classes #{"bar" "baz"}
+       :blah 1
+       :bleh 2}
+      [:fee :fi :fo :fum]))
+
+  (expect =
+    (clj-arsenal.burp/$ :foo#fooz.bar.baz
+      {:blah 1 :bleh 2}
+      :fee :fi :fo :fum)
+    (->BurpElement
+      (->BurpElementKey :foo nil)
+      {:clj-arsenal.burp/id "fooz"
+       :clj-arsenal.burp/classes #{"bar" "baz"}
+       :blah 1
+       :bleh 2}
+      [:fee :fi :fo :fum]))
+
+  (expect =
+    (clj-arsenal.burp/$ :foo#fooz.bar.baz
+      :fee :fi :fo :fum)
+    (->BurpElement
+      (->BurpElementKey :foo nil)
+      {:clj-arsenal.burp/id "fooz"
+       :clj-arsenal.burp/classes #{"bar" "baz"}}
+      [:fee :fi :fo :fum]))
+
+  (expect =
+    (clj-arsenal.burp/$ :div
+      {:style
+       {:position :relative
+        :background-color "var(--color-bg-canvas)"
+        :display :flex
+        :height "100%"
+        :justify-content :center
+        :align-items :center}}
+      (clj-arsenal.burp/$ :div
+        {:style
+         {:background-color "var(--color-bg-surface)"
+          :box-shadow "var(--shadow-primary)"
+          :position :absolute
+          :top "0px"
+          :left "0px"
+          :bottom "0px"
+          :width "400px"}}))
+    (->BurpElement
+      (->BurpElementKey :div nil)
+      {:style
+       {:position :relative
+        :background-color "var(--color-bg-canvas)"
+        :display :flex
+        :height "100%"
+        :justify-content :center
+        :align-items :center}}
+      [(->BurpElement
+         (->BurpElementKey :div nil)
+         {:style
+          {:background-color "var(--color-bg-surface)"
+           :box-shadow "var(--shadow-primary)"
+           :position :absolute
+           :top "0px"
+           :left "0px"
+           :bottom "0px"
+           :width "400px"}}
+         [])]))
+  
+  (expect =
+    (clj-arsenal.burp/$ ::text {::value "Some text"} nil)
+    (->BurpElement
+      (->BurpElementKey ::text nil)
+      {::value "Some text"}
+      [])))
 
 (check ::onceify-ok
   (let
