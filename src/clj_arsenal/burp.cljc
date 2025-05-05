@@ -39,7 +39,7 @@ Create an element key record.
     (mapcat
       (fn [x]
         (cond
-          (seq? x) (flatten-body x)
+          (or (seq? x) (sequential? x)) (flatten-body x)
           (nil? x) nil
           :else [x]))
       body)))
